@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Toastmasters Timer Monitor",
+  "version": "1.0",
+  "description": "Monitors the Toastmasters timer and logs time changes to console",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://www.toastmasters.org/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Toastmasters Timer Monitor"
+  }
+}
