@@ -1,8 +1,11 @@
 // Popup script for Toastmasters Timer Monitor
 document.addEventListener('DOMContentLoaded', function() {
   const statusDiv = document.getElementById('status');
+  const usbStatusDiv = document.getElementById('usbStatus');
   const testButton = document.getElementById('testButton');
   const reloadButton = document.getElementById('reloadButton');
+  const connectUsbButton = document.getElementById('connectUsb');
+  const disconnectUsbButton = document.getElementById('disconnectUsb');
 
   // Check if current tab is the timer page
   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
@@ -31,6 +34,31 @@ document.addEventListener('DOMContentLoaded', function() {
   reloadButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.reload(tabs[0].id);
+    });
+  });
+
+  // USB Connect button
+  connectUsbButton.addEventListener('click', function() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      chrome.scripting.executeScript({
+        target: {tabId: tabs[0].id},
+        files: ['webusb.js']
+      }, () => {
+        chrome.scripting.executeScript({
+          target: {tabId: tabs[0].id},
+          function: connectToUSB
+        });
+      });
+    });
+  });
+
+  // USB Disconnect button
+  disconnectUsbButton.addEventListener('click', function() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      chrome.scripting.executeScript({
+        target: {tabId: tabs[0].id},
+        function: disconnectFromUSB
+      });
     });
   });
 });
@@ -68,4 +96,69 @@ function testExtension() {
   console.log('Found potential timer elements:', timeElements);
   
   alert('Test completed - check console for details');
+}
+
+// Function to connect to USB device
+function connectToUSB() {
+  console.log('Attempting to connect to USB device...');
+  
+  if (!WebUSBManager.isSupported()) {
+    alert('WebUSB is not supported in this browser');
+    return;
+  }
+
+  // Create global USB manager instance
+  window.usbManager = new WebUSBManager({
+    debug: true,
+    timeout: 5000,
+    filters: [
+      // Add your device filters here, examples:
+      // { vendorId: 0x2341 },  // Arduino
+      // { vendorId: 0x1234, productId: 0x5678 },  // Custom device
+    ]
+  });
+
+  window.usbManager.connect()
+    .then(() => {
+      console.log('USB device connected successfully');
+      const deviceInfo = window.usbManager.getDeviceInfo();
+      console.log('Device info:', deviceInfo);
+      
+      // Update timer monitor to send data to USB
+      if (window.timerMonitor) {
+        window.timerMonitor.enableUSBSync(window.usbManager);
+      }
+      
+      alert('USB device connected! Check console for details.');
+    })
+    .catch(error => {
+      console.error('USB connection failed:', error);
+      alert(`USB connection failed: ${error.message}`);
+    });
+}
+
+// Function to disconnect from USB device
+function disconnectFromUSB() {
+  console.log('Disconnecting from USB device...');
+  
+  if (window.usbManager) {
+    window.usbManager.disconnect()
+      .then(() => {
+        console.log('USB device disconnected');
+        
+        // Disable USB sync in timer monitor
+        if (window.timerMonitor) {
+          window.timerMonitor.disableUSBSync();
+        }
+        
+        window.usbManager = null;
+        alert('USB device disconnected');
+      })
+      .catch(error => {
+        console.error('USB disconnect error:', error);
+        alert(`Disconnect failed: ${error.message}`);
+      });
+  } else {
+    alert('No USB device connected');
+  }
 }

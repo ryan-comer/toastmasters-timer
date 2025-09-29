@@ -6,6 +6,8 @@ class TimerMonitor {
     this.lastTimerValue = null;
     this.timerElement = null;
     this.observer = null;
+    this.usbManager = null;
+    this.usbEnabled = false;
     this.init();
   }
 
@@ -204,7 +206,46 @@ class TimerMonitor {
         timestamp: new Date().toISOString()
       });
       
+      // Send to USB device if connected
+      this.sendToUSB(currentValue);
+      
       this.lastTimerValue = currentValue;
+    }
+  }
+
+  // Enable USB synchronization
+  enableUSBSync(usbManager) {
+    this.usbManager = usbManager;
+    this.usbEnabled = true;
+    console.log('USB sync enabled');
+    
+    // Send current timer value immediately
+    if (this.lastTimerValue) {
+      this.sendToUSB(this.lastTimerValue);
+    }
+  }
+
+  // Disable USB synchronization
+  disableUSBSync() {
+    this.usbManager = null;
+    this.usbEnabled = false;
+    console.log('USB sync disabled');
+  }
+
+  // Send timer value to USB device
+  async sendToUSB(timerValue) {
+    if (!this.usbEnabled || !this.usbManager || !this.usbManager.isConnected) {
+      return;
+    }
+
+    try {
+      const message = `TIMER:${timerValue}\n`;
+      await this.usbManager.writeString(message);
+      console.log('Sent to USB:', message.trim());
+    } catch (error) {
+      console.error('USB send error:', error);
+      // Optionally disable USB on error
+      // this.disableUSBSync();
     }
   }
 
@@ -215,6 +256,7 @@ class TimerMonitor {
     if (this.intervalId) {
       clearInterval(this.intervalId);
     }
+    this.disableUSBSync();
   }
 }
 

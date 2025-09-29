@@ -64,15 +64,21 @@
     Not on timer page
   </div>
   
+  <div id="usbStatus" class="status inactive">
+    USB device not connected
+  </div>
+
   <div class="instructions">
     <strong>How to use:</strong>
     <ol>
       <li>Navigate to the Toastmasters timer page</li>
-      <li>Open browser console (F12)</li>
-      <li>Timer changes will be logged automatically</li>
+      <li>Connect to USB device (optional)</li>
+      <li>Timer changes will be logged and sent to USB</li>
     </ol>
     
-    <strong>Debug:</strong>
+    <strong>Controls:</strong>
+    <button class="button" id="connectUsb">Connect USB</button>
+    <button class="button" id="disconnectUsb" disabled>Disconnect USB</button>
     <button class="button" id="testButton">Test Extension</button>
     <button class="button" id="reloadButton">Reload</button>
   </div>

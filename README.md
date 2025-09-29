@@ -6,6 +6,7 @@ A Chrome extension that monitors the Toastmasters timer webpage and logs time ch
 
 - Automatically detects timer elements on the Toastmasters timer page
 - Monitors for time changes and logs them to console
+- **WebUSB integration** - Send timer data to connected microcontrollers
 - Flexible detection algorithm that works with various timer formats
 - Debug popup for testing and troubleshooting
 
@@ -18,10 +19,19 @@ A Chrome extension that monitors the Toastmasters timer webpage and logs time ch
 
 ## Usage
 
+### Basic Timer Monitoring
 1. Navigate to the Toastmasters timer page: `https://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer`
 2. Open the browser console (Press F12, then click "Console" tab)
 3. The extension will automatically start monitoring the timer
 4. Timer changes will be logged to the console with timestamps
+
+### WebUSB Integration
+1. Click the extension icon to open the popup
+2. Click "Connect USB" to connect to your microcontroller
+3. Select your device from the browser's device picker
+4. Timer changes will now be sent to your USB device automatically
+
+**USB Message Format:** `TIMER:MM:SS\n` (e.g., `TIMER:05:30\n`)
 
 ## Console Output
 
@@ -74,10 +84,68 @@ If the extension isn't working:
 - Searches for timer elements using multiple CSS selectors
 - Compatible with Chrome Manifest V3
 
+## WebUSB Class Usage
+
+The extension includes a comprehensive WebUSB class that you can use independently:
+
+```javascript
+// Create WebUSB manager
+const usb = new WebUSBManager({
+  vendorId: 0x2341,    // Your device vendor ID
+  productId: 0x0043,   // Your device product ID
+  debug: true
+});
+
+// Connect to device
+await usb.connect();
+
+// Send string data
+await usb.writeString("Hello Device!\n");
+
+// Read response
+const response = await usb.readString(64);
+console.log("Device response:", response);
+
+// Send binary data
+await usb.write(new Uint8Array([0x01, 0x02, 0x03]));
+
+// Disconnect
+await usb.disconnect();
+```
+
+See `webusb-examples.js` for more detailed usage examples.
+
+## Microcontroller Setup
+
+Your microcontroller should:
+1. Implement USB CDC (Serial) communication
+2. Listen for messages in format: `TIMER:MM:SS\n`
+3. Optionally send acknowledgment responses
+
+**Arduino Example:**
+```cpp
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  if (Serial.available()) {
+    String message = Serial.readStringUntil('\n');
+    if (message.startsWith("TIMER:")) {
+      String timerValue = message.substring(6);
+      // Process timer value
+      Serial.println("ACK");
+    }
+  }
+}
+```
+
 ## Files
 
 - `manifest.json` - Extension configuration
 - `content.js` - Main monitoring script
 - `popup.html` - Extension popup interface  
 - `popup.js` - Popup functionality
+- `webusb.js` - WebUSB communication class
+- `webusb-examples.js` - Usage examples
 - `README.md` - This file
