@@ -6,7 +6,7 @@ class TimerMonitor {
     this.lastTimerValue = null;
     this.timerElement = null;
     this.observer = null;
-    this.usbManager = null;
+    this.usbSerial = null;     // was usbManager
     this.usbEnabled = false;
     this.init();
   }
@@ -206,18 +206,18 @@ class TimerMonitor {
         timestamp: new Date().toISOString()
       });
       
-      // Send to USB device if connected
+      // Send to USB/Serial device if connected
       this.sendToUSB(currentValue);
       
       this.lastTimerValue = currentValue;
     }
   }
 
-  // Enable USB synchronization
-  enableUSBSync(usbManager) {
-    this.usbManager = usbManager;
+  // Enable USB/Serial synchronization
+  enableUSBSync(usbSerial) {
+    this.usbSerial = usbSerial;   // was this.usbManager
     this.usbEnabled = true;
-    console.log('USB sync enabled');
+    console.log('USB/Serial sync enabled');
     
     // Send current timer value immediately
     if (this.lastTimerValue) {
@@ -225,26 +225,26 @@ class TimerMonitor {
     }
   }
 
-  // Disable USB synchronization
+  // Disable USB/Serial synchronization
   disableUSBSync() {
-    this.usbManager = null;
+    this.usbSerial = null;        // was this.usbManager
     this.usbEnabled = false;
-    console.log('USB sync disabled');
+    console.log('USB/Serial sync disabled');
   }
 
-  // Send timer value to USB device
+  // Send timer value to USB/Serial device
   async sendToUSB(timerValue) {
-    if (!this.usbEnabled || !this.usbManager || !this.usbManager.isConnected) {
+    if (!this.usbEnabled || !this.usbSerial || !this.usbSerial.isConnected) {
       return;
     }
 
     try {
       const message = `TIMER:${timerValue}\n`;
-      await this.usbManager.writeString(message);
-      console.log('Sent to USB:', message.trim());
+      await this.usbSerial.writeString(message);
+      console.log('Sent to USB/Serial:', message.trim());
     } catch (error) {
-      console.error('USB send error:', error);
-      // Optionally disable USB on error
+      console.error('USB/Serial send error:', error);
+      // Optionally disable on error
       // this.disableUSBSync();
     }
   }

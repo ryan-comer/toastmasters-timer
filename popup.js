@@ -37,22 +37,23 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // USB Connect button
+  // Serial (formerly USB) Connect button
   connectUsbButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      // Inject the WebSerialManager script instead of webusb.js
       chrome.scripting.executeScript({
         target: {tabId: tabs[0].id},
-        files: ['webusb.js']
+        files: ['webserial.js']   // <-- make sure this file defines WebSerialManager
       }, () => {
         chrome.scripting.executeScript({
           target: {tabId: tabs[0].id},
-          function: connectToUSB
+          function: connectToUSB   // still called connectToUSB for compatibility
         });
       });
     });
   });
 
-  // USB Disconnect button
+  // Serial (formerly USB) Disconnect button
   disconnectUsbButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.scripting.executeScript({
@@ -98,67 +99,76 @@ function testExtension() {
   alert('Test completed - check console for details');
 }
 
-// Function to connect to USB device
+// Function to connect to Serial device (using WebSerialManager)
 function connectToUSB() {
-  console.log('Attempting to connect to USB device...');
+  console.log('Attempting to connect to Serial device (WebSerial)...');
   
-  if (!WebUSBManager.isSupported()) {
-    alert('WebUSB is not supported in this browser');
+  if (!window.WebSerialManager || !WebSerialManager.isSupported()) {
+    alert('Web Serial is not supported or not enabled in this browser');
     return;
   }
 
-  // Create global USB manager instance
-  window.usbManager = new WebUSBManager({
+  // Create global Serial manager instance
+  const manager = new WebSerialManager({
     debug: true,
     timeout: 5000,
     filters: [
-      // Add your device filters here, examples:
-      // { vendorId: 0x2341 },  // Arduino
-      // { vendorId: 0x1234, productId: 0x5678 },  // Custom device
-    ]
+      // Add your device filters here, examples (Web Serial uses usbVendorId / usbProductId):
+      // { usbVendorId: 0x2341 },                    // Arduino
+      // { usbVendorId: 0x1234, usbProductId: 0x5678 } // Custom device
+    ],
+    // Adjust baudRate/etc to match your device
+    baudRate: 115200
   });
 
-  window.usbManager.connect()
+  // For compatibility with existing code:
+  window.serialManager = manager;
+  window.usbManager = manager;
+
+  manager.connect()
     .then(() => {
-      console.log('USB device connected successfully');
-      const deviceInfo = window.usbManager.getDeviceInfo();
+      console.log('Serial device connected successfully');
+      const deviceInfo = manager.getDeviceInfo();
       console.log('Device info:', deviceInfo);
       
-      // Update timer monitor to send data to USB
-      if (window.timerMonitor) {
-        window.timerMonitor.enableUSBSync(window.usbManager);
+      // Update timer monitor to send data to serial device
+      if (window.timerMonitor && typeof window.timerMonitor.enableUSBSync === 'function') {
+        window.timerMonitor.enableUSBSync(manager);
       }
       
-      alert('USB device connected! Check console for details.');
+      alert('Serial device connected! Check console for details.');
     })
     .catch(error => {
-      console.error('USB connection failed:', error);
-      alert(`USB connection failed: ${error.message}`);
+      console.error('Serial connection failed:', error);
+      alert(`Serial connection failed: ${error.message}`);
     });
 }
 
-// Function to disconnect from USB device
+// Function to disconnect from Serial device
 function disconnectFromUSB() {
-  console.log('Disconnecting from USB device...');
+  console.log('Disconnecting from Serial device...');
+
+  const manager = window.serialManager || window.usbManager;
   
-  if (window.usbManager) {
-    window.usbManager.disconnect()
+  if (manager) {
+    manager.disconnect()
       .then(() => {
-        console.log('USB device disconnected');
+        console.log('Serial device disconnected');
         
-        // Disable USB sync in timer monitor
-        if (window.timerMonitor) {
+        // Disable USB/Serial sync in timer monitor
+        if (window.timerMonitor && typeof window.timerMonitor.disableUSBSync === 'function') {
           window.timerMonitor.disableUSBSync();
         }
         
+        window.serialManager = null;
         window.usbManager = null;
-        alert('USB device disconnected');
+        alert('Serial device disconnected');
       })
       .catch(error => {
-        console.error('USB disconnect error:', error);
+        console.error('Serial disconnect error:', error);
         alert(`Disconnect failed: ${error.message}`);
       });
   } else {
-    alert('No USB device connected');
+    alert('No Serial device connected');
   }
 }
