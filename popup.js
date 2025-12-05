@@ -39,7 +39,25 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       
     } else {
-      statusDiv.textContent = 'Navigate to timer page';
+      statusDiv.innerHTML = '';
+      const navButton = document.createElement('button');
+      navButton.textContent = 'Navigate to timer page';
+      navButton.className = 'button';
+      navButton.style.width = '100%';
+      navButton.addEventListener('click', function() {
+        const targetUrl = 'https://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer';
+        chrome.tabs.query({url: '*://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer*'}, function(tabs) {
+          if (tabs && tabs.length > 0) {
+            const tab = tabs[0];
+            chrome.tabs.update(tab.id, {active: true});
+            chrome.windows.update(tab.windowId, {focused: true});
+          } else {
+            chrome.tabs.create({url: targetUrl});
+          }
+        });
+      });
+      statusDiv.appendChild(navButton);
+      
       statusDiv.className = 'status inactive';
       connectSerialButton.disabled = true;
       disconnectSerialButton.disabled = true;
@@ -150,7 +168,7 @@ function connectToSerial() {
       // { usbVendorId: 0x1234, usbProductId: 0x5678 } // Custom device
     ],
     // Adjust baudRate/etc to match your device
-    baudRate: 115200
+    baudRate: 9600
   });
 
   window.serialManager = manager;

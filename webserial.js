@@ -14,7 +14,7 @@ class WebSerialManager {
       usbVendorId,
       usbProductId,
       filters = [],
-      baudRate = 115200,
+      baudRate = 9600,
       dataBits = 8,
       stopBits = 1,
       parity = 'none',
