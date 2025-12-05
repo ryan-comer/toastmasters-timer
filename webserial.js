@@ -8,15 +8,6 @@ class WebSerialManager {
     this.port = null;
     this.isConnected = false;
 
-    // Serial doesn't use endpoints/interfaces/configurations the same way USB does,
-    // but we keep these to avoid breaking code that references them.
-    this.configuration = 1;
-    this.interface = 0;
-    this.endpoint = {
-      in: 1,
-      out: 2
-    };
-
     const {
       vendorId,
       productId,
@@ -288,30 +279,6 @@ class WebSerialManager {
       usbProductId: info.usbProductId ?? null
       // Web Serial doesn't expose as much info as WebUSB
     };
-  }
-
-  /**
-   * Set endpoint numbers for communication
-   * (kept for API compatibility; not used by Web Serial)
-   */
-  setEndpoints(inEndpoint, outEndpoint) {
-    this.endpoint.in = inEndpoint;
-    this.endpoint.out = outEndpoint;
-    this.log(
-      `Endpoints set (no-op in WebSerial) - IN: ${inEndpoint}, OUT: ${outEndpoint}`
-    );
-  }
-
-  /**
-   * Set interface and configuration numbers
-   * (kept for API compatibility; not used by Web Serial)
-   */
-  setInterface(interfaceNumber, configurationNumber = 1) {
-    this.interface = interfaceNumber;
-    this.configuration = configurationNumber;
-    this.log(
-      `Interface set (no-op in WebSerial) - Interface: ${interfaceNumber}, Configuration: ${configurationNumber}`
-    );
   }
 
   /**

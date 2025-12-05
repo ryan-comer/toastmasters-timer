@@ -5,8 +5,7 @@
   "description": "Monitors the Toastmasters timer and logs time changes to console",
   "permissions": [
     "activeTab",
-    "scripting",
-    "usb"
+    "scripting"
   ],
   "host_permissions": [
     "*://www.toastmasters.org/*"

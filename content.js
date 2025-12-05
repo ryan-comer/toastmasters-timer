@@ -5,341 +5,240 @@ class TimerMonitor {
   constructor() {
     this.lastTimerValue = null;
     this.lastColorValue = null;
-    this.timerElement = null;
-    this.observer = null;
+    
+    // Track time and color elements separately for robustness
+    this.timeElement = null;
+    this.colorElement = null;
+    
+    this.observers = [];
+    this.intervalId = null;
     this.onTimerChangeCallback = null;
+    
     this.init();
   }
 
   init() {
-    // Wait for the page to fully load
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => this.findTimerElement());
+      document.addEventListener('DOMContentLoaded', () => this.findTimerElements());
     } else {
-      this.findTimerElement();
+      this.findTimerElements();
     }
   }
 
-  findTimerElement() {
-    // Directly target known timer ID
-    const el = document.getElementById('timeDiv');
-    if (el) {
-      this.timerElement = el;
-      console.log('Timer element found by ID timeDiv:', el);
+  findTimerElements() {
+    // 1. Look for the specific Toastmasters elements based on the known HTML structure
+    // HTML: <div id="timergrid" ...><div id="timeDiv">01:07</div>...</div>
+    const timeDiv = document.getElementById('timeDiv');
+    const timerGrid = document.getElementById('timergrid');
+
+    if (timeDiv) {
+      this.timeElement = timeDiv;
+      // If timergrid exists, use it for color. Otherwise fallback to timeDiv (and traverse up later)
+      this.colorElement = timerGrid || timeDiv; 
+      
+      console.log('Toastmasters timer elements found:', { 
+        time: this.timeElement, 
+        color: this.colorElement 
+      });
+      
       this.startMonitoring();
       return;
     }
     
+    // 2. Fallback: Try to find any element that looks like a timer
+    console.log('Standard timer elements (timeDiv) not found, attempting generic search...');
+    this.findGenericTimerElement();
+  }
+
+  findGenericTimerElement() {
     // Common selectors for timer displays
     const timerSelectors = [
       '[class*="timer"]',
       '[id*="timer"]',
-      '[class*="time"]',
-      '[id*="time"]',
       '.countdown',
-      '.clock',
-      '[data-timer]',
-      '[data-time]',
-      // More specific patterns
-      'div:contains(":")',
-      'span:contains(":")',
-      // Look for elements with time patterns (MM:SS format)
-      '*[textContent*=":"]'
+      '.clock'
     ];
 
-    // Try to find timer element using various methods
     for (const selector of timerSelectors) {
-      try {
-        const elements = document.querySelectorAll(selector);
-        for (const element of elements) {
-          const text = element.textContent || element.innerText;
-          if (this.isTimeFormat(text)) {
-            this.timerElement = element;
-            console.log('Timer element found:', element);
-            console.log('Timer selector:', selector);
-            this.startMonitoring();
-            return;
-          }
+      const elements = document.querySelectorAll(selector);
+      for (const element of elements) {
+        if (this.isTimeFormat(element.textContent)) {
+          this.timeElement = element;
+          this.colorElement = element;
+          console.log('Generic timer element found:', element);
+          this.startMonitoring();
+          return;
         }
-      } catch (e) {
-        // Skip invalid selectors
-        continue;
       }
     }
-
-    // If no timer found, try a more comprehensive search
-    this.searchAllElements();
+    
+    // If still not found, monitor document for future additions
+    this.monitorDocumentForTimer();
   }
 
-  searchAllElements() {
-    console.log('Performing comprehensive search for timer elements...');
-    
-    // Get all text nodes and elements
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-      {
-        acceptNode: (node) => {
-          if (node.nodeType === Node.TEXT_NODE) {
-            const text = node.textContent.trim();
-            return this.isTimeFormat(text) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-          }
-          return NodeFilter.FILTER_SKIP;
-        }
+  monitorDocumentForTimer() {
+    console.log('Monitoring document for timer appearance...');
+    const docObserver = new MutationObserver(() => {
+      const timeDiv = document.getElementById('timeDiv');
+      if (timeDiv) {
+        docObserver.disconnect();
+        this.findTimerElements();
       }
-    );
+    });
+    
+    docObserver.observe(document.body, { childList: true, subtree: true });
+    this.observers.push(docObserver);
+  }
 
-    const timeNodes = [];
-    let node;
-    while (node = walker.nextNode()) {
-      timeNodes.push(node.parentElement);
+  startMonitoring() {
+    this.stopMonitoring(); // Clear existing observers/intervals
+
+    if (!this.timeElement) {
+      console.log('No timer element to monitor');
+      return;
     }
 
-    if (timeNodes.length > 0) {
-      this.timerElement = timeNodes[0]; // Use the first found time element
-      console.log('Timer element found via comprehensive search:', this.timerElement);
-      this.startMonitoring();
-    } else {
-      console.log('No timer element found. Monitoring all text changes...');
-      this.monitorAllChanges();
+    // Initial values
+    this.lastTimerValue = this.getTimerValue();
+    this.lastColorValue = this.getTimerColor();
+    console.log('Initial state:', { time: this.lastTimerValue, color: this.lastColorValue });
+
+    // 1. Observe Time Element for text changes
+    const timeObserver = new MutationObserver(() => this.check());
+    timeObserver.observe(this.timeElement, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+    this.observers.push(timeObserver);
+
+    // 2. Observe Color Element for attribute changes (style/class)
+    // If colorElement is different from timeElement (the robust case), observe it specifically
+    if (this.colorElement && this.colorElement !== this.timeElement) {
+      const colorObserver = new MutationObserver(() => this.check());
+      colorObserver.observe(this.colorElement, {
+        attributes: true,
+        attributeFilter: ['style', 'class', 'background']
+      });
+      this.observers.push(colorObserver);
+    } else if (this.colorElement) {
+      // If they are the same, add attribute monitoring to the existing element
+      const attrObserver = new MutationObserver(() => this.check());
+      attrObserver.observe(this.colorElement, {
+        attributes: true,
+        attributeFilter: ['style', 'class', 'background']
+      });
+      this.observers.push(attrObserver);
+    }
+
+    // 3. Polling fallback (robustness)
+    // Checks every 200ms to ensure we catch changes even if MutationObserver misses something
+    // or if the element is replaced entirely
+    this.intervalId = setInterval(() => {
+      // Check if elements are still valid/connected
+      if (!this.timeElement.isConnected) {
+        console.log('Timer element disconnected, rescanning...');
+        this.stopMonitoring();
+        this.findTimerElements();
+        return;
+      }
+      
+      // Also check if the ID 'timeDiv' has moved to a new element (React/Framework re-renders)
+      if (this.timeElement.id === 'timeDiv') {
+        const currentEl = document.getElementById('timeDiv');
+        if (currentEl && currentEl !== this.timeElement) {
+            console.log('timeDiv element replaced, re-binding...');
+            this.stopMonitoring();
+            this.findTimerElements();
+            return;
+        }
+      }
+
+      this.check();
+    }, 200);
+  }
+
+  stopMonitoring() {
+    this.observers.forEach(obs => obs.disconnect());
+    this.observers = [];
+    if (this.intervalId) {
+        clearInterval(this.intervalId);
+        this.intervalId = null;
+    }
+  }
+
+  getTimerValue() {
+    if (!this.timeElement) return '';
+    return (this.timeElement.textContent || this.timeElement.innerText || '').trim();
+  }
+
+  getTimerColor() {
+    if (!this.colorElement) return 'rgb(0, 0, 0)';
+    
+    // If we have the specific timergrid, check it directly
+    // The HTML uses inline style="background: rgb(...)" which getComputedStyle handles well
+    const style = window.getComputedStyle(this.colorElement);
+    let bg = style.backgroundColor;
+
+    // If the specific element doesn't have a background, traverse up
+    // (Useful if colorElement is just timeDiv and we need to find the container)
+    if ((!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') && this.colorElement !== document.body) {
+        let el = this.colorElement.parentElement;
+        while (el) {
+            const parentStyle = window.getComputedStyle(el);
+            const parentBg = parentStyle.backgroundColor;
+            if (parentBg && parentBg !== 'rgba(0, 0, 0, 0)' && parentBg !== 'transparent') {
+                return parentBg;
+            }
+            el = el.parentElement;
+        }
+    }
+    
+    return bg || 'rgb(0, 0, 0)';
+  }
+
+  check() {
+    const time = this.getTimerValue();
+    const color = this.getTimerColor();
+
+    if (time !== this.lastTimerValue || color !== this.lastColorValue) {
+      console.log(`Timer Update: ${time} [${color}]`);
+      
+      if (this.onTimerChangeCallback) {
+        this.onTimerChangeCallback(time, color);
+      }
+      
+      this.lastTimerValue = time;
+      this.lastColorValue = color;
+    }
+  }
+  
+  setTimerChangeCallback(callback) {
+    this.onTimerChangeCallback = callback;
+    // Send immediate update if we have data
+    if (this.lastTimerValue) {
+        callback(this.lastTimerValue, this.lastColorValue || this.getTimerColor());
     }
   }
 
   isTimeFormat(text) {
     if (!text) return false;
-    
-    // Check for various time formats
-    const timePatterns = [
-      /^\d{1,2}:\d{2}$/,           // MM:SS or M:SS
-      /^\d{1,2}:\d{2}:\d{2}$/,     // HH:MM:SS or H:MM:SS
-      /^\d{1,2}:\d{2}\.\d+$/,      // MM:SS.ms
-      /^\d+\.\d+$/,                // Seconds with decimal
-      /^\d+:\d{2}$/                // Basic minute:second format
-    ];
-
-    return timePatterns.some(pattern => pattern.test(text.trim()));
+    return /^\d{1,2}:\d{2}/.test(text.trim());
   }
-
-  startMonitoring() {
-    if (!this.timerElement) {
-      console.log('No timer element to monitor');
-      return;
-    }
-
-    // Get initial value
-    this.lastTimerValue = this.getTimerValue();
-    console.log('Initial timer value:', this.lastTimerValue);
-
-    // Set up mutation observer to watch for changes
-    this.observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList' || mutation.type === 'characterData') {
-          this.checkForTimeChange();
-        }
-      });
-    });
-
-    // Start observing
-    this.observer.observe(this.timerElement, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['style', 'class']
-    });
-
-    // Also check periodically in case changes aren't captured by mutation observer
-    this.intervalId = setInterval(() => {
-      // Check if element is still connected or replaced
-      if (this.timerElement) {
-        // If we found it by ID, check if the ID still points to the same element
-        if (this.timerElement.id === 'timeDiv') {
-          const currentEl = document.getElementById('timeDiv');
-          if (currentEl && currentEl !== this.timerElement) {
-            console.log('Timer element replaced in DOM (ID match), updating reference...');
-            this.updateTimerElement(currentEl);
-            return;
-          }
-        }
-        
-        // Check if element is disconnected
-        if (!this.timerElement.isConnected) {
-          console.log('Timer element disconnected, searching again...');
-          this.destroy(true); // true = keep callback
-          this.timerElement = null;
-          this.init(); // Restart search
-          return;
-        }
-      }
-      
-      this.checkForTimeChange();
-    }, 100); // Check every 100ms
-
-    console.log('Timer monitoring started on:', this.timerElement);
-  }
-
-  updateTimerElement(newElement) {
-    if (this.observer) {
-      this.observer.disconnect();
-    }
-    this.timerElement = newElement;
-    
-    // Re-attach observer
-    this.observer = new MutationObserver((mutations) => {
-      this.checkForTimeChange();
-    });
-    
-    this.observer.observe(this.timerElement, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['style', 'class']
-    });
-    
-    console.log('Timer element reference updated:', this.timerElement);
-  }
-
-  monitorAllChanges() {
-    // Fallback: monitor all changes in the document
-    this.observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList' || mutation.type === 'characterData') {
-          this.checkAllElementsForTime();
-        }
-      });
-    });
-
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true
-    });
-
-    console.log('Monitoring all document changes for timer updates');
-  }
-
-  checkAllElementsForTime() {
-    const allElements = document.querySelectorAll('*');
-    for (const element of allElements) {
-      // Skip script and style tags
-      if (element.tagName === 'SCRIPT' || element.tagName === 'STYLE') continue;
-      
-      // Check direct text content only to avoid matching container elements
-      const text = Array.from(element.childNodes)
-        .filter(node => node.nodeType === Node.TEXT_NODE)
-        .map(node => node.textContent)
-        .join('')
-        .trim();
-        
-      if (this.isTimeFormat(text)) {
-        console.log('Timer element identified dynamically:', element);
-        this.timerElement = element;
-        
-        // Stop the global observer
-        if (this.observer) {
-          this.observer.disconnect();
-        }
-        
-        // Switch to focused monitoring
-        this.startMonitoring();
-        return;
-      }
-    }
-  }
-
-  getTimerValue() {
-    if (!this.timerElement) return null;
-    
-    // Try multiple ways to get the text content
-    let text = this.timerElement.textContent || this.timerElement.innerText || '';
-    
-    // If empty, try checking child nodes specifically
-    if (!text.trim()) {
-      text = Array.from(this.timerElement.childNodes)
-        .filter(node => node.nodeType === Node.TEXT_NODE)
-        .map(node => node.textContent)
-        .join('');
-    }
-    
-    return text.trim();
-  }
-
-  getTimerColor() {
-    if (!this.timerElement) return null;
-    
-    // Traverse up to find the background color
-    let currentElement = this.timerElement;
-    while (currentElement) {
-      const style = window.getComputedStyle(currentElement);
-      const bgColor = style.backgroundColor;
-      
-      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') {
-        return bgColor;
-      }
-      
-      currentElement = currentElement.parentElement;
-    }
-    
-    return 'rgb(0, 0, 0)'; // Default to black if nothing found
-  }
-
-  checkForTimeChange() {
-    const currentValue = this.getTimerValue();
-    const currentColor = this.getTimerColor();
-    
-    if ((currentValue && currentValue !== this.lastTimerValue) || 
-        (currentColor && currentColor !== this.lastColorValue)) {
-      
-      console.log('Timer update:', {
-        time: currentValue,
-        color: currentColor,
-        previousTime: this.lastTimerValue,
-        previousColor: this.lastColorValue,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Notify callback if registered
-      if (this.onTimerChangeCallback) {
-        this.onTimerChangeCallback(currentValue, currentColor);
-      }
-      
-      this.lastTimerValue = currentValue;
-      this.lastColorValue = currentColor;
-    }
-  }
-
-  // Register a callback for timer changes
-  setTimerChangeCallback(callback) {
-    this.onTimerChangeCallback = callback;
-    console.log('Timer change callback registered');
-    
-    // Send current timer value immediately if available
-    if (this.lastTimerValue && callback) {
-      callback(this.lastTimerValue, this.lastColorValue || this.getTimerColor());
-    }
-  }
-
-  destroy(keepCallback = false) {
-    if (this.observer) {
-      this.observer.disconnect();
-    }
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-    }
-    if (!keepCallback) {
-      this.onTimerChangeCallback = null;
-    }
+  
+  destroy() {
+    this.stopMonitoring();
+    this.onTimerChangeCallback = null;
   }
 }
 
-// Initialize the timer monitor
+// Initialize
 const timerMonitor = new TimerMonitor();
 
-// Cleanup when page unloads
+// Cleanup
 window.addEventListener('beforeunload', () => {
   timerMonitor.destroy();
 });
 
-// Also expose to window for debugging
+// Expose for debugging/popup
 window.timerMonitor = timerMonitor;

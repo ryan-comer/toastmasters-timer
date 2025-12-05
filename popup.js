@@ -1,11 +1,11 @@
 // Popup script for Toastmasters Timer Monitor
 document.addEventListener('DOMContentLoaded', function() {
   const statusDiv = document.getElementById('status');
-  const usbStatusDiv = document.getElementById('usbStatus');
+  const serialStatusDiv = document.getElementById('serialStatus');
   const testButton = document.getElementById('testButton');
   const reloadButton = document.getElementById('reloadButton');
-  const connectUsbButton = document.getElementById('connectUsb');
-  const disconnectUsbButton = document.getElementById('disconnectUsb');
+  const connectSerialButton = document.getElementById('connectSerial');
+  const disconnectSerialButton = document.getElementById('disconnectSerial');
 
   // Check if current tab is the timer page
   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
       statusDiv.textContent = 'Active on timer page';
       statusDiv.className = 'status active';
       
-      // Check USB connection status
+      // Check Serial connection status
       chrome.scripting.executeScript({
         target: {tabId: currentTab.id},
         function: checkConnectionStatus
@@ -26,23 +26,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         if (results && results[0] && results[0].result) {
-          usbStatusDiv.textContent = 'USB device connected';
-          usbStatusDiv.className = 'status active';
-          connectUsbButton.disabled = true;
-          disconnectUsbButton.disabled = false;
+          serialStatusDiv.textContent = 'Serial device connected';
+          serialStatusDiv.className = 'status active';
+          connectSerialButton.disabled = true;
+          disconnectSerialButton.disabled = false;
         } else {
-          usbStatusDiv.textContent = 'USB device not connected';
-          usbStatusDiv.className = 'status inactive';
-          connectUsbButton.disabled = false;
-          disconnectUsbButton.disabled = true;
+          serialStatusDiv.textContent = 'Serial device not connected';
+          serialStatusDiv.className = 'status inactive';
+          connectSerialButton.disabled = false;
+          disconnectSerialButton.disabled = true;
         }
       });
       
     } else {
       statusDiv.textContent = 'Navigate to timer page';
       statusDiv.className = 'status inactive';
-      connectUsbButton.disabled = true;
-      disconnectUsbButton.disabled = true;
+      connectSerialButton.disabled = true;
+      disconnectSerialButton.disabled = true;
     }
   });
 
@@ -63,28 +63,28 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // Serial (formerly USB) Connect button
-  connectUsbButton.addEventListener('click', function() {
+  // Serial Connect button
+  connectSerialButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      // Inject the WebSerialManager script instead of webusb.js
+      // Inject the WebSerialManager script
       chrome.scripting.executeScript({
         target: {tabId: tabs[0].id},
-        files: ['webserial.js']   // <-- make sure this file defines WebSerialManager
+        files: ['webserial.js']
       }, () => {
         chrome.scripting.executeScript({
           target: {tabId: tabs[0].id},
-          function: connectToUSB   // still called connectToUSB for compatibility
+          function: connectToSerial
         });
       });
     });
   });
 
-  // Serial (formerly USB) Disconnect button
-  disconnectUsbButton.addEventListener('click', function() {
+  // Serial Disconnect button
+  disconnectSerialButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.scripting.executeScript({
         target: {tabId: tabs[0].id},
-        function: disconnectFromUSB
+        function: disconnectFromSerial
       });
     });
   });
@@ -132,7 +132,7 @@ function testExtension() {
 }
 
 // Function to connect to Serial device (using WebSerialManager)
-function connectToUSB() {
+function connectToSerial() {
   console.log('Attempting to connect to Serial device (WebSerial)...');
   
   if (!window.WebSerialManager || !WebSerialManager.isSupported()) {
@@ -153,9 +153,7 @@ function connectToUSB() {
     baudRate: 115200
   });
 
-  // For compatibility with existing code:
   window.serialManager = manager;
-  window.usbManager = manager;
 
   manager.connect()
     .then(() => {
@@ -184,7 +182,7 @@ function connectToUSB() {
               await manager.writeString(message);
               console.log('[Popup] Send successful');
             } catch (error) {
-              console.error('[Popup] USB/Serial send error:', error);
+              console.error('[Popup] Serial send error:', error);
             }
           } else {
             console.warn('[Popup] Serial manager not connected, skipping send');
@@ -201,23 +199,22 @@ function connectToUSB() {
 }
 
 // Function to disconnect from Serial device
-function disconnectFromUSB() {
+function disconnectFromSerial() {
   console.log('Disconnecting from Serial device...');
 
-  const manager = window.serialManager || window.usbManager;
+  const manager = window.serialManager;
   
   if (manager) {
     manager.disconnect()
       .then(() => {
         console.log('Serial device disconnected');
         
-        // Disable USB/Serial sync in timer monitor
+        // Disable Serial sync in timer monitor
         if (window.timerMonitor && typeof window.timerMonitor.setTimerChangeCallback === 'function') {
           window.timerMonitor.setTimerChangeCallback(null);
         }
         
         window.serialManager = null;
-        window.usbManager = null;
         alert('Serial device disconnected');
       })
       .catch(error => {
@@ -231,6 +228,6 @@ function disconnectFromUSB() {
 
 // Function to check connection status
 function checkConnectionStatus() {
-  const manager = window.serialManager || window.usbManager;
+  const manager = window.serialManager;
   return !!(manager && manager.isConnected);
 }
