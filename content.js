@@ -4,10 +4,10 @@ console.log('Toastmasters Timer Monitor extension loaded');
 class TimerMonitor {
   constructor() {
     this.lastTimerValue = null;
+    this.lastColorValue = null;
     this.timerElement = null;
     this.observer = null;
-    this.usbSerial = null;     // was usbManager
-    this.usbEnabled = false;
+    this.onTimerChangeCallback = null;
     this.init();
   }
 
@@ -144,7 +144,8 @@ class TimerMonitor {
       childList: true,
       subtree: true,
       characterData: true,
-      attributes: false
+      attributes: true,
+      attributeFilter: ['style', 'class']
     });
 
     // Also check periodically in case changes aren't captured by mutation observer
@@ -195,57 +196,50 @@ class TimerMonitor {
     return (this.timerElement.textContent || this.timerElement.innerText || '').trim();
   }
 
+  getTimerColor() {
+    if (!this.timerElement) return null;
+    const style = window.getComputedStyle(this.timerElement);
+    // Check background color first, then text color
+    let color = style.backgroundColor;
+    if (color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
+      color = style.color;
+    }
+    return color;
+  }
+
   checkForTimeChange() {
     const currentValue = this.getTimerValue();
+    const currentColor = this.getTimerColor();
     
-    if (currentValue && currentValue !== this.lastTimerValue) {
-      console.log('Timer value changed:', {
-        previous: this.lastTimerValue,
-        current: currentValue,
-        element: this.timerElement,
+    if ((currentValue && currentValue !== this.lastTimerValue) || 
+        (currentColor && currentColor !== this.lastColorValue)) {
+      
+      console.log('Timer update:', {
+        time: currentValue,
+        color: currentColor,
+        previousTime: this.lastTimerValue,
+        previousColor: this.lastColorValue,
         timestamp: new Date().toISOString()
       });
       
-      // Send to USB/Serial device if connected
-      this.sendToUSB(currentValue);
+      // Notify callback if registered
+      if (this.onTimerChangeCallback) {
+        this.onTimerChangeCallback(currentValue, currentColor);
+      }
       
       this.lastTimerValue = currentValue;
+      this.lastColorValue = currentColor;
     }
   }
 
-  // Enable USB/Serial synchronization
-  enableUSBSync(usbSerial) {
-    this.usbSerial = usbSerial;   // was this.usbManager
-    this.usbEnabled = true;
-    console.log('USB/Serial sync enabled');
+  // Register a callback for timer changes
+  setTimerChangeCallback(callback) {
+    this.onTimerChangeCallback = callback;
+    console.log('Timer change callback registered');
     
-    // Send current timer value immediately
-    if (this.lastTimerValue) {
-      this.sendToUSB(this.lastTimerValue);
-    }
-  }
-
-  // Disable USB/Serial synchronization
-  disableUSBSync() {
-    this.usbSerial = null;        // was this.usbManager
-    this.usbEnabled = false;
-    console.log('USB/Serial sync disabled');
-  }
-
-  // Send timer value to USB/Serial device
-  async sendToUSB(timerValue) {
-    if (!this.usbEnabled || !this.usbSerial || !this.usbSerial.isConnected) {
-      return;
-    }
-
-    try {
-      const message = `TIMER:${timerValue}\n`;
-      await this.usbSerial.writeString(message);
-      console.log('Sent to USB/Serial:', message.trim());
-    } catch (error) {
-      console.error('USB/Serial send error:', error);
-      // Optionally disable on error
-      // this.disableUSBSync();
+    // Send current timer value immediately if available
+    if (this.lastTimerValue && callback) {
+      callback(this.lastTimerValue, this.lastColorValue || this.getTimerColor());
     }
   }
 
@@ -256,7 +250,7 @@ class TimerMonitor {
     if (this.intervalId) {
       clearInterval(this.intervalId);
     }
-    this.disableUSBSync();
+    this.onTimerChangeCallback = null;
   }
 }
 

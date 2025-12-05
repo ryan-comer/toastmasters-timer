@@ -132,8 +132,28 @@ function connectToUSB() {
       console.log('Device info:', deviceInfo);
       
       // Update timer monitor to send data to serial device
-      if (window.timerMonitor && typeof window.timerMonitor.enableUSBSync === 'function') {
-        window.timerMonitor.enableUSBSync(manager);
+      if (window.timerMonitor && typeof window.timerMonitor.setTimerChangeCallback === 'function') {
+        window.timerMonitor.setTimerChangeCallback(async (timerValue, colorValue) => {
+          if (manager && manager.isConnected) {
+            try {
+              // Parse color value (rgb(r, g, b) or rgba(r, g, b, a))
+              let color = '0,0,0';
+              if (colorValue) {
+                const rgbMatch = colorValue.match(/\d+/g);
+                if (rgbMatch && rgbMatch.length >= 3) {
+                  color = `${rgbMatch[0]},${rgbMatch[1]},${rgbMatch[2]}`;
+                }
+              }
+              
+              const message = `${color}\n`;
+              await manager.writeString(message);
+              
+              console.log('Sent to USB/Serial:', message.trim());
+            } catch (error) {
+              console.error('USB/Serial send error:', error);
+            }
+          }
+        });
       }
       
       alert('Serial device connected! Check console for details.');
@@ -156,8 +176,8 @@ function disconnectFromUSB() {
         console.log('Serial device disconnected');
         
         // Disable USB/Serial sync in timer monitor
-        if (window.timerMonitor && typeof window.timerMonitor.disableUSBSync === 'function') {
-          window.timerMonitor.disableUSBSync();
+        if (window.timerMonitor && typeof window.timerMonitor.setTimerChangeCallback === 'function') {
+          window.timerMonitor.setTimerChangeCallback(null);
         }
         
         window.serialManager = null;

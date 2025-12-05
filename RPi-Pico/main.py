@@ -1,99 +1,70 @@
+import machine
 import neopixel
 import select
 import sys
-import machine
-import time
-import os
- 
-MAX_BUFFER = 16 #max buffer for reading timer values
-BRIGHTNESS_FACTOR = 0.02
-
-np = neopixel.NeoPixel(machine.Pin(4), 64)
-
-# Set colors for individual LEDs
-np[0] = (255, 0, 0) # Red
-np[1] = (0, 128, 0) # Green (half brightness)
-np[2] = (0, 0, 64) # Blue (quarter brightness)
-
-led = machine.Pin(25, machine.Pin.OUT) #controls LED
-pollObj = select.poll() #instantiate a poll object
-pollObj.register(sys.stdin,1) #register stdin for monitoring read
-
-buffer = [MAX_BUFFER]
-y = 0
-ledBlink = 1
-
-#For things that need to be initialized
-def initRPico():
-    print("~Rpico Start~")
-
-initRPico()
-
-def blinkLed():
-    led.value(not led.value())
-    time.sleep(1)
-    #ledBlink = not ledBlink
-    #led.value(0)
-    #time.sleep(1)
-
 import time
 
-def demo(np):
-    n = np.n
+# Configuration
+PIN_NUM = 4
+NUM_LEDS = 64
+BRIGHTNESS_FACTOR = 0.1  # Adjust brightness (0.0 to 1.0)
 
-    # Cycle animation
-    for i in range(4 * n):
-        for j in range(n):
-            np[j] = (0, 0, 0)
-        np[i % n] = (int(255*BRIGHTNESS_FACTOR), int(255*BRIGHTNESS_FACTOR), int(255*BRIGHTNESS_FACTOR))
-        np.write()
-        time.sleep_ms(25)
+# Setup NeoPixel
+np = neopixel.NeoPixel(machine.Pin(PIN_NUM), NUM_LEDS)
 
-    # Bounce animation
-    for i in range(4 * n):
-        for j in range(n):
-            np[j] = (0, 0, int(128*BRIGHTNESS_FACTOR))
-        if (i // n) % 2 == 0:
-            np[i % n] = (0, 0, 0)
-        else:
-            np[n - 1 - (i % n)] = (0, 0, 0)
-        np.write()
-        time.sleep_ms(60)
+# Setup Onboard LED for status (Pin 25 is standard for Pico, use "LED" for Pico W)
+try:
+    led = machine.Pin("LED", machine.Pin.OUT)
+except:
+    led = machine.Pin(25, machine.Pin.OUT)
 
-    # Fade in/out animation
-    for i in range(0, 4 * 256, 8):
-        for j in range(n):
-            val = i & 0xff if (i // 256) % 2 == 0 else 255 - (i & 0xff)
-            np[j] = (int(val*BRIGHTNESS_FACTOR), 0, 0)
-        np.write()
+# Setup Poll for stdin
+poll_obj = select.poll()
+poll_obj.register(sys.stdin, select.POLLIN)
 
-    # Clear LEDs
-    for i in range(n):
-        np[i] = (0, 0, 0)
-    np.write()
- 
-while True:
-    '''
-    #Check for data available on stdin
-    if pollObj.poll(0):
-        #buffer = sys.stdin.read(1) #read one character from stdin
-        buffer = sys.stdin.buffer.read() #read entire buffer to stdin
-        #buffer = os.read(0, 12) #0 specifies stdin, 12 describes length of buffer
-        #if buffer == 'T':
-        print("Message: ")
-        print(buffer)
-        print("Received this many bytes: ")
-        print(len(buffer))
-        blinkLed()
-    '''
-
-    ch = select.select([sys.stdin], [], [], 0).read(1) [^1^]
-        if ch == 't':
-            print("LED toggled")
-        else:
-            print("No data available")
-
-    #demo(np)
+def set_color(r, g, b):
+    # Apply brightness scaling
+    r = int(r * BRIGHTNESS_FACTOR)
+    g = int(g * BRIGHTNESS_FACTOR)
+    b = int(b * BRIGHTNESS_FACTOR)
     
+    for i in range(NUM_LEDS):
+        np[i] = (r, g, b)
+    np.write()
 
-   # time.sleep(0.1)
+print("Ready to receive RGB values (format: R,G,B)")
+
+# Buffer for incoming data
+buffer = ""
+
+while True:
+    # Check if data is available
+    poll_results = poll_obj.poll(10) # 10ms timeout
+    
+    if poll_results:
+        # Read character by character to handle potential fragmentation
+        char = sys.stdin.read(1)
+        if char:
+            if char == '\n':
+                # Process the complete line
+                try:
+                    # Remove whitespace
+                    line = buffer.strip()
+                    if line:
+                        parts = line.split(',')
+                        if len(parts) == 3:
+                            r = int(parts[0])
+                            g = int(parts[1])
+                            b = int(parts[2])
+                            set_color(r, g, b)
+                            # Blink onboard LED to indicate receipt
+                            led.toggle()
+                except ValueError:
+                    pass # Ignore parse errors
+                except Exception as e:
+                    pass # Ignore other errors
+                
+                # Reset buffer
+                buffer = ""
+            else:
+                buffer += char
