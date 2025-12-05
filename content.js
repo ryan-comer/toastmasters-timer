@@ -150,10 +150,54 @@ class TimerMonitor {
 
     // Also check periodically in case changes aren't captured by mutation observer
     this.intervalId = setInterval(() => {
+      // Check if element is still connected or replaced
+      if (this.timerElement) {
+        // If we found it by ID, check if the ID still points to the same element
+        if (this.timerElement.id === 'timeDiv') {
+          const currentEl = document.getElementById('timeDiv');
+          if (currentEl && currentEl !== this.timerElement) {
+            console.log('Timer element replaced in DOM (ID match), updating reference...');
+            this.updateTimerElement(currentEl);
+            return;
+          }
+        }
+        
+        // Check if element is disconnected
+        if (!this.timerElement.isConnected) {
+          console.log('Timer element disconnected, searching again...');
+          this.destroy(true); // true = keep callback
+          this.timerElement = null;
+          this.init(); // Restart search
+          return;
+        }
+      }
+      
       this.checkForTimeChange();
     }, 100); // Check every 100ms
 
-    console.log('Timer monitoring started');
+    console.log('Timer monitoring started on:', this.timerElement);
+  }
+
+  updateTimerElement(newElement) {
+    if (this.observer) {
+      this.observer.disconnect();
+    }
+    this.timerElement = newElement;
+    
+    // Re-attach observer
+    this.observer = new MutationObserver((mutations) => {
+      this.checkForTimeChange();
+    });
+    
+    this.observer.observe(this.timerElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
+    
+    console.log('Timer element reference updated:', this.timerElement);
   }
 
   monitorAllChanges() {
@@ -178,33 +222,66 @@ class TimerMonitor {
   checkAllElementsForTime() {
     const allElements = document.querySelectorAll('*');
     for (const element of allElements) {
-      const text = element.textContent || element.innerText;
-      if (this.isTimeFormat(text) && text !== this.lastTimerValue) {
-        console.log('Timer value changed:', {
-          previous: this.lastTimerValue,
-          current: text,
-          element: element,
-          timestamp: new Date().toISOString()
-        });
-        this.lastTimerValue = text;
+      // Skip script and style tags
+      if (element.tagName === 'SCRIPT' || element.tagName === 'STYLE') continue;
+      
+      // Check direct text content only to avoid matching container elements
+      const text = Array.from(element.childNodes)
+        .filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent)
+        .join('')
+        .trim();
+        
+      if (this.isTimeFormat(text)) {
+        console.log('Timer element identified dynamically:', element);
+        this.timerElement = element;
+        
+        // Stop the global observer
+        if (this.observer) {
+          this.observer.disconnect();
+        }
+        
+        // Switch to focused monitoring
+        this.startMonitoring();
+        return;
       }
     }
   }
 
   getTimerValue() {
     if (!this.timerElement) return null;
-    return (this.timerElement.textContent || this.timerElement.innerText || '').trim();
+    
+    // Try multiple ways to get the text content
+    let text = this.timerElement.textContent || this.timerElement.innerText || '';
+    
+    // If empty, try checking child nodes specifically
+    if (!text.trim()) {
+      text = Array.from(this.timerElement.childNodes)
+        .filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent)
+        .join('');
+    }
+    
+    return text.trim();
   }
 
   getTimerColor() {
     if (!this.timerElement) return null;
-    const style = window.getComputedStyle(this.timerElement);
-    // Check background color first, then text color
-    let color = style.backgroundColor;
-    if (color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
-      color = style.color;
+    
+    // Traverse up to find the background color
+    let currentElement = this.timerElement;
+    while (currentElement) {
+      const style = window.getComputedStyle(currentElement);
+      const bgColor = style.backgroundColor;
+      
+      if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') {
+        return bgColor;
+      }
+      
+      currentElement = currentElement.parentElement;
     }
-    return color;
+    
+    return 'rgb(0, 0, 0)'; // Default to black if nothing found
   }
 
   checkForTimeChange() {
@@ -243,14 +320,16 @@ class TimerMonitor {
     }
   }
 
-  destroy() {
+  destroy(keepCallback = false) {
     if (this.observer) {
       this.observer.disconnect();
     }
     if (this.intervalId) {
       clearInterval(this.intervalId);
     }
-    this.onTimerChangeCallback = null;
+    if (!keepCallback) {
+      this.onTimerChangeCallback = null;
+    }
   }
 }
 

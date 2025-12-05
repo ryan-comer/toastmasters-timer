@@ -14,9 +14,35 @@ document.addEventListener('DOMContentLoaded', function() {
         currentTab.url.includes('timer')) {
       statusDiv.textContent = 'Active on timer page';
       statusDiv.className = 'status active';
+      
+      // Check USB connection status
+      chrome.scripting.executeScript({
+        target: {tabId: currentTab.id},
+        function: checkConnectionStatus
+      }, (results) => {
+        if (chrome.runtime.lastError) {
+          console.log('Error checking connection status:', chrome.runtime.lastError);
+          return;
+        }
+        
+        if (results && results[0] && results[0].result) {
+          usbStatusDiv.textContent = 'USB device connected';
+          usbStatusDiv.className = 'status active';
+          connectUsbButton.disabled = true;
+          disconnectUsbButton.disabled = false;
+        } else {
+          usbStatusDiv.textContent = 'USB device not connected';
+          usbStatusDiv.className = 'status inactive';
+          connectUsbButton.disabled = false;
+          disconnectUsbButton.disabled = true;
+        }
+      });
+      
     } else {
       statusDiv.textContent = 'Navigate to timer page';
       statusDiv.className = 'status inactive';
+      connectUsbButton.disabled = true;
+      disconnectUsbButton.disabled = true;
     }
   });
 
@@ -73,6 +99,12 @@ function testExtension() {
     console.log('Timer monitor is active:', window.timerMonitor);
     console.log('Current timer element:', window.timerMonitor.timerElement);
     console.log('Last timer value:', window.timerMonitor.lastTimerValue);
+    
+    // Set a debug callback to verify callback functionality
+    console.log('Setting debug callback...');
+    window.timerMonitor.setTimerChangeCallback((timerValue, colorValue) => {
+      console.log(`[Debug Callback] Time: ${timerValue}, Color: ${colorValue}`);
+    });
   } else {
     console.log('Timer monitor not found - extension may not be loaded');
   }
@@ -134,6 +166,8 @@ function connectToUSB() {
       // Update timer monitor to send data to serial device
       if (window.timerMonitor && typeof window.timerMonitor.setTimerChangeCallback === 'function') {
         window.timerMonitor.setTimerChangeCallback(async (timerValue, colorValue) => {
+          console.log(`[Popup] Timer update received - Time: ${timerValue}, Color: ${colorValue}`);
+          
           if (manager && manager.isConnected) {
             try {
               // Parse color value (rgb(r, g, b) or rgba(r, g, b, a))
@@ -146,12 +180,14 @@ function connectToUSB() {
               }
               
               const message = `${color}\n`;
+              console.log(`[Popup] Sending to Serial: "${message.trim()}"`);
               await manager.writeString(message);
-              
-              console.log('Sent to USB/Serial:', message.trim());
+              console.log('[Popup] Send successful');
             } catch (error) {
-              console.error('USB/Serial send error:', error);
+              console.error('[Popup] USB/Serial send error:', error);
             }
+          } else {
+            console.warn('[Popup] Serial manager not connected, skipping send');
           }
         });
       }
@@ -191,4 +227,10 @@ function disconnectFromUSB() {
   } else {
     alert('No Serial device connected');
   }
+}
+
+// Function to check connection status
+function checkConnectionStatus() {
+  const manager = window.serialManager || window.usbManager;
+  return !!(manager && manager.isConnected);
 }
