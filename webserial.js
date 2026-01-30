@@ -228,6 +228,64 @@ class WebSerialManager {
   }
 
   /**
+   * Start a continuous read loop that decodes incoming bytes to text lines and
+   * forwards each complete line to the provided callback (or console/UI by default).
+   * @param {(line: string)=>void} onLine - Optional callback for each received line
+   */
+  async startReadLoop(onLine = null) {
+    if (!this.isConnected || !this.port || !this.port.readable) {
+      throw new Error('Device not connected or not readable');
+    }
+
+    if (this._readLoopRunning) return;
+    this._readLoopRunning = true;
+
+    const reader = this.port.readable.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (this._readLoopRunning) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+
+        // Decode chunk and accumulate
+        buffer += decoder.decode(value, { stream: true });
+
+        // Split into lines, keep remainder in buffer
+        const parts = buffer.split(/\r?\n/);
+        buffer = parts.pop();
+
+        for (const p of parts) {
+          const line = p.trim();
+          if (!line) continue;
+          if (typeof onLine === 'function') {
+            try { onLine(line); } catch (e) { this.log('onLine callback error', e); }
+          } else {
+            // Default: console and optional textarea with id "serial-log"
+            console.log('[Serial]', line);
+            const el = (typeof document !== 'undefined') && document.getElementById && document.getElementById('serial-log');
+            if (el) el.value = (el.value || '') + line + '\n';
+          }
+        }
+      }
+    } catch (error) {
+      this.log('Read loop error:', error);
+    } finally {
+      try { reader.releaseLock(); } catch (e) {}
+      this._readLoopRunning = false;
+    }
+  }
+
+  /**
+   * Stop the ongoing read loop
+   */
+  stopReadLoop() {
+    this._readLoopRunning = false;
+  }
+
+  /**
    * Write string data to device
    * @param {string} text - Text to write
    * @returns {Promise<void>}
