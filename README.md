@@ -47,7 +47,7 @@ A Chrome extension that monitors the [Toastmasters online timer](https://www.toa
 
 The `RPi-Pico/main.py` script runs on a Pico (or Pico W) and drives a NeoPixel strip:
 
-1. Connect a NeoPixel strip data pin to **GP4** (configurable in the script)
+1. Connect a NeoPixel strip data pin to **GP6** (configurable in the script)
 2. Copy `RPi-Pico/main.py` to the Pico as `main.py`
 3. The Pico reads `R,G,B\n` lines over USB serial and sets all LEDs to that color
 
@@ -55,9 +55,9 @@ Key settings in `main.py`:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PIN_NUM` | `4` | GPIO pin for NeoPixel data |
+| `PIN_NUM` | `6` | GPIO pin for NeoPixel data |
 | `NUM_LEDS` | `64` | Number of LEDs in the strip |
-| `BRIGHTNESS_FACTOR` | `0.1` | Brightness scale (0.0–1.0) |
+| `BRIGHTNESS_FACTOR` | `0.02` | Brightness scale (0.0–1.0) |
 
 ## Troubleshooting
 
