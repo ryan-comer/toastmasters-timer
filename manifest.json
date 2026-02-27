@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Toastmasters Timer Monitor",
   "version": "1.0",
-  "description": "Monitors the Toastmasters timer and logs time changes to console",
+  "description": "Monitors the Toastmasters timer and streams color data to a serial device",
   "permissions": [
     "activeTab",
     "scripting"

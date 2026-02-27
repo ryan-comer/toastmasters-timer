@@ -1,21 +1,76 @@
 // Popup script for Toastmasters Timer Monitor
+
+// Helper: get the active tab and invoke a callback with it
+function getActiveTab(callback) {
+  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => callback(tabs[0]));
+}
+
+// Helper: execute a function in the active tab's context
+function executeInActiveTab(fn) {
+  getActiveTab((tab) => {
+    chrome.scripting.executeScript({ target: {tabId: tab.id}, function: fn });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-  const statusDiv = document.getElementById('status');
-  const serialStatusDiv = document.getElementById('serialStatus');
+  // Status elements
+  const timerDot = document.getElementById('timerDot');
+  const timerLabel = document.getElementById('timerLabel');
+  const serialDot = document.getElementById('serialDot');
+  const serialLabel = document.getElementById('serialLabel');
+
+  // Buttons
+  const navigateBtn = document.getElementById('navigateBtn');
+  const serialToggleBtn = document.getElementById('serialToggleBtn');
   const testButton = document.getElementById('testButton');
   const reloadButton = document.getElementById('reloadButton');
-  const connectSerialButton = document.getElementById('connectSerial');
-  const disconnectSerialButton = document.getElementById('disconnectSerial');
 
-  // Check if current tab is the timer page
-  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-    const currentTab = tabs[0];
-    if (currentTab.url && currentTab.url.includes('toastmasters.org') && 
-        currentTab.url.includes('timer')) {
-      statusDiv.textContent = 'Active on timer page';
-      statusDiv.className = 'status active';
-      
-      // Check Serial connection status
+  // Track whether serial is currently connected so the toggle knows what to do
+  let serialConnected = false;
+
+  // ── UI helpers ──
+
+  function setTimerActive() {
+    timerDot.className = 'status-dot green';
+    timerLabel.textContent = 'Timer page active';
+    navigateBtn.classList.add('hidden');
+    serialToggleBtn.disabled = false;
+  }
+
+  function setTimerInactive() {
+    timerDot.className = 'status-dot red';
+    timerLabel.textContent = 'Not on timer page';
+    navigateBtn.classList.remove('hidden');
+    serialToggleBtn.disabled = true;
+  }
+
+  function setSerialConnected() {
+    serialConnected = true;
+    serialDot.className = 'status-dot green';
+    serialLabel.innerHTML = 'Serial connected<div class="status-detail">Streaming color data to device</div>';
+    serialToggleBtn.textContent = 'Disconnect Serial';
+    serialToggleBtn.className = 'btn btn-danger';
+  }
+
+  function setSerialDisconnected() {
+    serialConnected = false;
+    serialDot.className = 'status-dot red';
+    serialLabel.innerHTML = 'Serial disconnected<div class="status-detail">Connect to stream color data</div>';
+    serialToggleBtn.textContent = 'Connect Serial';
+    serialToggleBtn.className = 'btn btn-success';
+  }
+
+  // ── Initialise state ──
+
+  getActiveTab((currentTab) => {
+    const onTimerPage = currentTab.url &&
+      currentTab.url.includes('toastmasters.org') &&
+      currentTab.url.includes('timer');
+
+    if (onTimerPage) {
+      setTimerActive();
+
+      // Check serial connection status
       chrome.scripting.executeScript({
         target: {tabId: currentTab.id},
         function: checkConnectionStatus
@@ -24,127 +79,80 @@ document.addEventListener('DOMContentLoaded', function() {
           console.log('Error checking connection status:', chrome.runtime.lastError);
           return;
         }
-        
         if (results && results[0] && results[0].result) {
-          serialStatusDiv.textContent = 'Serial device connected';
-          serialStatusDiv.className = 'status active';
-          connectSerialButton.disabled = true;
-          disconnectSerialButton.disabled = false;
+          setSerialConnected();
         } else {
-          serialStatusDiv.textContent = 'Serial device not connected';
-          serialStatusDiv.className = 'status inactive';
-          connectSerialButton.disabled = false;
-          disconnectSerialButton.disabled = true;
+          setSerialDisconnected();
         }
       });
-      
     } else {
-      statusDiv.innerHTML = '';
-      const navButton = document.createElement('button');
-      navButton.textContent = 'Navigate to timer page';
-      navButton.className = 'button';
-      navButton.style.width = '100%';
-      navButton.addEventListener('click', function() {
-        const targetUrl = 'https://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer';
-        chrome.tabs.query({url: '*://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer*'}, function(tabs) {
-          if (tabs && tabs.length > 0) {
-            const tab = tabs[0];
-            chrome.tabs.update(tab.id, {active: true});
-            chrome.windows.update(tab.windowId, {focused: true});
-          } else {
-            chrome.tabs.create({url: targetUrl});
-          }
-        });
-      });
-      statusDiv.appendChild(navButton);
-      
-      statusDiv.className = 'status inactive';
-      connectSerialButton.disabled = true;
-      disconnectSerialButton.disabled = true;
+      setTimerInactive();
+      setSerialDisconnected();
     }
   });
 
-  // Test button - inject a test script
-  testButton.addEventListener('click', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.scripting.executeScript({
-        target: {tabId: tabs[0].id},
-        function: testExtension
-      });
+  // ── Navigate button ──
+
+  navigateBtn.addEventListener('click', () => {
+    const targetUrl = 'https://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer';
+    chrome.tabs.query({url: '*://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer*'}, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.update(tabs[0].id, {active: true});
+        chrome.windows.update(tabs[0].windowId, {focused: true});
+      } else {
+        chrome.tabs.create({url: targetUrl});
+      }
     });
   });
 
-  // Reload button
-  reloadButton.addEventListener('click', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.reload(tabs[0].id);
-    });
-  });
+  // ── Serial toggle (connect / disconnect) ──
 
-  // Serial Connect button
-  connectSerialButton.addEventListener('click', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      // Inject the WebSerialManager script
-      chrome.scripting.executeScript({
-        target: {tabId: tabs[0].id},
-        files: ['webserial.js']
-      }, () => {
+  serialToggleBtn.addEventListener('click', () => {
+    if (serialConnected) {
+      executeInActiveTab(disconnectFromSerial);
+      setSerialDisconnected();
+    } else {
+      getActiveTab((tab) => {
         chrome.scripting.executeScript({
-          target: {tabId: tabs[0].id},
-          function: connectToSerial
+          target: {tabId: tab.id},
+          files: ['webserial.js']
+        }, () => {
+          chrome.scripting.executeScript({
+            target: {tabId: tab.id},
+            function: connectToSerial
+          });
         });
       });
-    });
+      // Optimistically update — connectToSerial will alert on failure
+      setSerialConnected();
+    }
   });
 
-  // Serial Disconnect button
-  disconnectSerialButton.addEventListener('click', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.scripting.executeScript({
-        target: {tabId: tabs[0].id},
-        function: disconnectFromSerial
-      });
-    });
+  // ── Utility buttons ──
+
+  testButton.addEventListener('click', () => executeInActiveTab(testExtension));
+
+  reloadButton.addEventListener('click', () => {
+    getActiveTab((tab) => chrome.tabs.reload(tab.id));
   });
 });
 
-// Function to inject for testing
+// Function to inject for testing (read-only diagnostics — does not modify callbacks)
 function testExtension() {
   console.log('Toastmasters Timer Monitor - Test triggered');
   
-  // Log current timer monitor status
   if (window.timerMonitor) {
-    console.log('Timer monitor is active:', window.timerMonitor);
-    console.log('Current timer element:', window.timerMonitor.timerElement);
+    console.log('Timer monitor is active');
+    console.log('Time element:', window.timerMonitor.timeElement);
+    console.log('Color element:', window.timerMonitor.colorElement);
     console.log('Last timer value:', window.timerMonitor.lastTimerValue);
-    
-    // Set a debug callback to verify callback functionality
-    console.log('Setting debug callback...');
-    window.timerMonitor.setTimerChangeCallback((timerValue, colorValue) => {
-      console.log(`[Debug Callback] Time: ${timerValue}, Color: ${colorValue}`);
-    });
+    console.log('Last color value:', window.timerMonitor.lastColorValue);
+    console.log('Callback set:', !!window.timerMonitor.onTimerChangeCallback);
   } else {
     console.log('Timer monitor not found - extension may not be loaded');
   }
   
-  // Search for potential timer elements
-  const timeElements = [];
-  const allElements = document.querySelectorAll('*');
-  
-  allElements.forEach(element => {
-    const text = element.textContent || element.innerText || '';
-    if (/\d{1,2}:\d{2}/.test(text.trim())) {
-      timeElements.push({
-        element: element,
-        text: text.trim(),
-        tagName: element.tagName,
-        className: element.className,
-        id: element.id
-      });
-    }
-  });
-  
-  console.log('Found potential timer elements:', timeElements);
+  console.log('Serial connected:', !!(window.serialManager && window.serialManager.isConnected));
   
   alert('Test completed - check console for details');
 }
@@ -197,7 +205,7 @@ function connectToSerial() {
               
               const message = `${color}\n`;
               console.log(`[Popup] Sending to Serial: "${message.trim()}"`);
-              await manager.writeString(message);
+              await manager.write(message);
               console.log('[Popup] Send successful');
             } catch (error) {
               console.error('[Popup] Serial send error:', error);

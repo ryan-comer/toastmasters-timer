@@ -1,151 +1,96 @@
-# Toastmasters Timer Monitor Chrome Extension
+# Toastmasters Timer Monitor
 
-A Chrome extension that monitors the Toastmasters timer webpage and logs time changes to the browser console.
+A Chrome extension that monitors the [Toastmasters online timer](https://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer) and streams the timer's background color to a serial-connected device (e.g. a Raspberry Pi Pico driving NeoPixel LEDs).
 
 ## Features
 
-- Automatically detects timer elements on the Toastmasters timer page
-- Monitors for time changes and logs them to console
-- **WebUSB integration** - Send timer data to connected microcontrollers
-- Flexible detection algorithm that works with various timer formats
-- Debug popup for testing and troubleshooting
+- **Auto-detects** the timer on the Toastmasters page (`#timeDiv` / `#timergrid`)
+- **Monitors color changes** via MutationObserver + 200 ms polling fallback
+- **Web Serial integration** — sends RGB values to a microcontroller over serial
+- **Popup UI** — shows connection status, quick-navigate to the timer page, connect/disconnect serial, and run diagnostics
+- Includes a ready-to-use **Raspberry Pi Pico** MicroPython script for NeoPixel output
 
 ## Installation
 
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable "Developer mode" in the top right corner
-3. Click "Load unpacked" and select this folder
-4. The extension should now appear in your extensions list
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Enable **Developer mode** (toggle in the top-right corner)
+3. Click **Load unpacked** and select this repository folder
+4. The extension icon will appear in your toolbar
 
 ## Usage
 
-### Basic Timer Monitoring
-1. Navigate to the Toastmasters timer page: `https://www.toastmasters.org/my-toastmasters/profile/meeting-tools/timer`
-2. Open the browser console (Press F12, then click "Console" tab)
-3. The extension will automatically start monitoring the timer
-4. Timer changes will be logged to the console with timestamps
+### Timer Monitoring
 
-### WebUSB Integration
+1. Navigate to the Toastmasters timer page (or click the extension icon and use the **Navigate** button)
+2. The content script automatically starts observing the timer element
+3. Open DevTools (F12 → Console) to see live updates:
+   ```
+   Timer Update: 01:07 [rgb(0, 128, 0)]
+   ```
+
+### Serial Device Connection
+
 1. Click the extension icon to open the popup
-2. Click "Connect USB" to connect to your microcontroller
-3. Select your device from the browser's device picker
-4. Timer changes will now be sent to your USB device automatically
+2. Click **Connect Serial** and select your device from the browser picker
+3. The extension sends the timer's background color as `R,G,B\n` (e.g. `0,128,0\n`) over serial whenever it changes
 
-**USB Message Format:** `TIMER:MM:SS\n` (e.g., `TIMER:05:30\n`)
+### Popup Controls
 
-## Console Output
+| Button | Action |
+|---|---|
+| **Connect Serial** | Pair and open a Web Serial connection |
+| **Disconnect Serial** | Close the serial connection |
+| **Test Extension** | Log diagnostic info to the console (read-only) |
+| **Reload** | Reload the active tab |
 
-When the timer changes, you'll see logs like:
-```
-Timer value changed: {
-  previous: "5:00",
-  current: "4:59", 
-  element: <div class="timer">4:59</div>,
-  timestamp: "2025-08-03T10:30:15.123Z"
-}
-```
+## Hardware Setup (Raspberry Pi Pico)
 
-## Debugging
+The `RPi-Pico/main.py` script runs on a Pico (or Pico W) and drives a NeoPixel strip:
 
-- Click the extension icon to open the popup
-- Use the "Test Extension" button to check if the extension is working
-- Use the "Reload" button to refresh the current page
-- Check the console for debug messages
+1. Connect a NeoPixel strip data pin to **GP4** (configurable in the script)
+2. Copy `RPi-Pico/main.py` to the Pico as `main.py`
+3. The Pico reads `R,G,B\n` lines over USB serial and sets all LEDs to that color
 
-## Timer Detection
+Key settings in `main.py`:
 
-The extension uses multiple strategies to find timer elements:
-- Searches for common timer CSS classes and IDs
-- Looks for elements containing time patterns (MM:SS, HH:MM:SS, etc.)
-- Falls back to monitoring all page changes for time format text
-
-## Supported Time Formats
-
-- `MM:SS` (e.g., "5:30")
-- `M:SS` (e.g., "5:30") 
-- `HH:MM:SS` (e.g., "1:05:30")
-- `MM:SS.ms` (e.g., "5:30.5")
-- Decimal seconds (e.g., "30.5")
+| Variable | Default | Description |
+|---|---|---|
+| `PIN_NUM` | `4` | GPIO pin for NeoPixel data |
+| `NUM_LEDS` | `64` | Number of LEDs in the strip |
+| `BRIGHTNESS_FACTOR` | `0.1` | Brightness scale (0.0–1.0) |
 
 ## Troubleshooting
 
-If the extension isn't working:
-
-1. Check that you're on the correct Toastmasters timer page
-2. Open the extension popup and click "Test Extension"
-3. Check the console for any error messages
-4. Try refreshing the page
-5. Make sure the timer is visible and active on the page
+1. **Extension not detecting the timer** — Make sure you're on the exact Toastmasters timer URL. Click **Test Extension** and check the console.
+2. **Serial won't connect** — Ensure no other application has the port open. Chrome must support Web Serial (not available in all browsers).
+3. **LEDs not lighting up** — Verify wiring, GPIO pin, and that `main.py` is running. Check the Pico's serial output for "Ready to receive RGB values".
 
 ## Technical Details
 
-- Uses MutationObserver to detect DOM changes
-- Polls timer element every 100ms as backup
-- Searches for timer elements using multiple CSS selectors
-- Compatible with Chrome Manifest V3
+- **Manifest V3** Chrome extension
+- Timer detection: looks for `#timeDiv`, falls back to generic `[class*="timer"]` / `[id*="timer"]` selectors, then watches the DOM for late-loading elements
+- Color extraction: reads `background-color` via `getComputedStyle`, traverses parent elements if transparent
+- Dual change detection: MutationObserver for immediate response + `setInterval` (200 ms) as a safety net
 
-## WebUSB Class Usage
+## WebSerialManager
 
-The extension includes a comprehensive WebUSB class that you can use independently:
+`webserial.js` exposes a reusable `WebSerialManager` class:
 
 ```javascript
-// Create WebUSB manager
-const usb = new WebUSBManager({
-  vendorId: 0x2341,    // Your device vendor ID
-  productId: 0x0043,   // Your device product ID
-  debug: true
-});
-
-// Connect to device
-await usb.connect();
-
-// Send string data
-await usb.writeString("Hello Device!\n");
-
-// Read response
-const response = await usb.readString(64);
-console.log("Device response:", response);
-
-// Send binary data
-await usb.write(new Uint8Array([0x01, 0x02, 0x03]));
-
-// Disconnect
-await usb.disconnect();
+const serial = new WebSerialManager({ baudRate: 9600, debug: true });
+await serial.connect();
+await serial.write('0,128,0\n');
+const response = await serial.readString(64);
+await serial.disconnect();
 ```
 
-See `webusb-examples.js` for more detailed usage examples.
+## Project Structure
 
-## Microcontroller Setup
-
-Your microcontroller should:
-1. Implement USB CDC (Serial) communication
-2. Listen for messages in format: `TIMER:MM:SS\n`
-3. Optionally send acknowledgment responses
-
-**Arduino Example:**
-```cpp
-void setup() {
-  Serial.begin(9600);
-}
-
-void loop() {
-  if (Serial.available()) {
-    String message = Serial.readStringUntil('\n');
-    if (message.startsWith("TIMER:")) {
-      String timerValue = message.substring(6);
-      // Process timer value
-      Serial.println("ACK");
-    }
-  }
-}
-```
-
-## Files
-
-- `manifest.json` - Extension configuration
-- `content.js` - Main monitoring script
-- `popup.html` - Extension popup interface  
-- `popup.js` - Popup functionality
-- `webusb.js` - WebUSB communication class
-- `webusb-examples.js` - Usage examples
-- `README.md` - This file
+| File | Description |
+|---|---|
+| `manifest.json` | Extension configuration (Manifest V3) |
+| `content.js` | Content script — `TimerMonitor` class |
+| `popup.html` | Extension popup UI |
+| `popup.js` | Popup logic and serial connection management |
+| `webserial.js` | Reusable `WebSerialManager` class |
+| `RPi-Pico/main.py` | MicroPython NeoPixel driver for Raspberry Pi Pico |

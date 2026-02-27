@@ -113,22 +113,13 @@ class TimerMonitor {
     this.observers.push(timeObserver);
 
     // 2. Observe Color Element for attribute changes (style/class)
-    // If colorElement is different from timeElement (the robust case), observe it specifically
-    if (this.colorElement && this.colorElement !== this.timeElement) {
+    if (this.colorElement) {
       const colorObserver = new MutationObserver(() => this.check());
       colorObserver.observe(this.colorElement, {
         attributes: true,
         attributeFilter: ['style', 'class', 'background']
       });
       this.observers.push(colorObserver);
-    } else if (this.colorElement) {
-      // If they are the same, add attribute monitoring to the existing element
-      const attrObserver = new MutationObserver(() => this.check());
-      attrObserver.observe(this.colorElement, {
-        attributes: true,
-        attributeFilter: ['style', 'class', 'background']
-      });
-      this.observers.push(attrObserver);
     }
 
     // 3. Polling fallback (robustness)
@@ -147,10 +138,10 @@ class TimerMonitor {
       if (this.timeElement.id === 'timeDiv') {
         const currentEl = document.getElementById('timeDiv');
         if (currentEl && currentEl !== this.timeElement) {
-            console.log('timeDiv element replaced, re-binding...');
-            this.stopMonitoring();
-            this.findTimerElements();
-            return;
+          console.log('timeDiv element replaced, re-binding...');
+          this.stopMonitoring();
+          this.findTimerElements();
+          return;
         }
       }
 
@@ -162,8 +153,8 @@ class TimerMonitor {
     this.observers.forEach(obs => obs.disconnect());
     this.observers = [];
     if (this.intervalId) {
-        clearInterval(this.intervalId);
-        this.intervalId = null;
+      clearInterval(this.intervalId);
+      this.intervalId = null;
     }
   }
 
@@ -183,15 +174,15 @@ class TimerMonitor {
     // If the specific element doesn't have a background, traverse up
     // (Useful if colorElement is just timeDiv and we need to find the container)
     if ((!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') && this.colorElement !== document.body) {
-        let el = this.colorElement.parentElement;
-        while (el) {
-            const parentStyle = window.getComputedStyle(el);
-            const parentBg = parentStyle.backgroundColor;
-            if (parentBg && parentBg !== 'rgba(0, 0, 0, 0)' && parentBg !== 'transparent') {
-                return parentBg;
-            }
-            el = el.parentElement;
+      let el = this.colorElement.parentElement;
+      while (el) {
+        const parentStyle = window.getComputedStyle(el);
+        const parentBg = parentStyle.backgroundColor;
+        if (parentBg && parentBg !== 'rgba(0, 0, 0, 0)' && parentBg !== 'transparent') {
+          return parentBg;
         }
+        el = el.parentElement;
+      }
     }
     
     return bg || 'rgb(0, 0, 0)';
@@ -216,8 +207,8 @@ class TimerMonitor {
   setTimerChangeCallback(callback) {
     this.onTimerChangeCallback = callback;
     // Send immediate update if we have data
-    if (this.lastTimerValue) {
-        callback(this.lastTimerValue, this.lastColorValue || this.getTimerColor());
+    if (callback && this.lastTimerValue) {
+      callback(this.lastTimerValue, this.lastColorValue || this.getTimerColor());
     }
   }
 

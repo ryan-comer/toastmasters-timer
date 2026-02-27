@@ -228,15 +228,6 @@ class WebSerialManager {
   }
 
   /**
-   * Write string data to device
-   * @param {string} text - Text to write
-   * @returns {Promise<void>}
-   */
-  async writeString(text) {
-    return await this.write(text);
-  }
-
-  /**
    * Send a command and wait for response
    * @param {Uint8Array|Array|string} command - Command to send
    * @param {number} responseLength - Expected response length (max bytes)
