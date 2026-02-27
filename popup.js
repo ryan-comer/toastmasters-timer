@@ -183,14 +183,17 @@ function connectToSerial() {
 
   manager.connect()
     .then(() => {
-      console.log('Serial device connected successfully');
+      console.log('[Serial TX] Connected successfully');
       const deviceInfo = manager.getDeviceInfo();
-      console.log('Device info:', deviceInfo);
+      console.log('[Serial TX] Device info:', deviceInfo);
+
+      // Start background read loop to print Pico debug output
+      manager.startReadLoop();
       
       // Update timer monitor to send data to serial device
       if (window.timerMonitor && typeof window.timerMonitor.setTimerChangeCallback === 'function') {
         window.timerMonitor.setTimerChangeCallback(async (timerValue, colorValue) => {
-          console.log(`[Popup] Timer update received - Time: ${timerValue}, Color: ${colorValue}`);
+          console.log(`[Serial TX] Timer callback fired — time: "${timerValue}", raw color: "${colorValue}"`);
           
           if (manager && manager.isConnected) {
             try {
@@ -198,22 +201,27 @@ function connectToSerial() {
               let color = '0,0,0';
               if (colorValue) {
                 const rgbMatch = colorValue.match(/\d+/g);
+                console.log(`[Serial TX] Regex match on colorValue:`, rgbMatch);
                 if (rgbMatch && rgbMatch.length >= 3) {
                   color = `${rgbMatch[0]},${rgbMatch[1]},${rgbMatch[2]}`;
                 }
+              } else {
+                console.warn('[Serial TX] colorValue is falsy, sending 0,0,0');
               }
               
               const message = `${color}\n`;
-              console.log(`[Popup] Sending to Serial: "${message.trim()}"`);
+              console.log(`[Serial TX] Sending ${message.length} bytes: "${message.trim()}"`);
               await manager.write(message);
-              console.log('[Popup] Send successful');
+              console.log('[Serial TX] Write complete');
             } catch (error) {
-              console.error('[Popup] Serial send error:', error);
+              console.error('[Serial TX] Write error:', error);
             }
           } else {
-            console.warn('[Popup] Serial manager not connected, skipping send');
+            console.warn('[Serial TX] Not connected (isConnected=%s), skipping', manager?.isConnected);
           }
         });
+      } else {
+        console.warn('[Serial TX] timerMonitor not available — callback not set');
       }
       
       alert('Serial device connected! Check console for details.');
@@ -231,7 +239,8 @@ function disconnectFromSerial() {
   const manager = window.serialManager;
   
   if (manager) {
-    manager.disconnect()
+    manager.stopReadLoop()
+      .then(() => manager.disconnect())
       .then(() => {
         console.log('Serial device disconnected');
         

@@ -7,6 +7,8 @@ class WebSerialManager {
   constructor(options = {}) {
     this.port = null;
     this.isConnected = false;
+    this._readLoopActive = false;
+    this._readLoopReader = null;
 
     const {
       vendorId,
@@ -252,6 +254,75 @@ class WebSerialManager {
     } catch (error) {
       this.log('Send command error:', error);
       throw new Error(`Command failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Start a background read loop that continuously reads from the serial port
+   * and logs received lines to the console. Call stopReadLoop() before disconnect.
+   * @param {function} [onLine] - Optional callback invoked with each received line
+   */
+  startReadLoop(onLine = null) {
+    if (this._readLoopActive) return;
+    if (!this.isConnected || !this.port || !this.port.readable) {
+      this.log('Cannot start read loop — port not readable');
+      return;
+    }
+
+    this._readLoopActive = true;
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    const loop = async () => {
+      try {
+        while (this._readLoopActive && this.port && this.port.readable) {
+          this._readLoopReader = this.port.readable.getReader();
+          try {
+            while (this._readLoopActive) {
+              const { value, done } = await this._readLoopReader.read();
+              if (done) break;
+              if (value) {
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // keep incomplete trailing data in buffer
+                for (const line of lines) {
+                  const trimmed = line.replace(/\r$/, '');
+                  if (trimmed.length === 0) continue;
+                  console.log(`[Serial RX] ${trimmed}`);
+                  if (onLine) onLine(trimmed);
+                }
+              }
+            }
+          } finally {
+            this._readLoopReader.releaseLock();
+            this._readLoopReader = null;
+          }
+        }
+      } catch (error) {
+        if (this._readLoopActive) {
+          this.log('Read loop error:', error);
+        }
+      }
+      this._readLoopActive = false;
+      this.log('Read loop stopped');
+    };
+
+    loop();
+    this.log('Read loop started');
+  }
+
+  /**
+   * Stop the background read loop
+   */
+  async stopReadLoop() {
+    this._readLoopActive = false;
+    if (this._readLoopReader) {
+      try {
+        await this._readLoopReader.cancel();
+      } catch (e) {
+        this.log('Error cancelling reader:', e);
+      }
+      this._readLoopReader = null;
     }
   }
 
