@@ -13,10 +13,10 @@ np = neopixel.NeoPixel(machine.Pin(PIN_NUM), NUM_LEDS)
 # Setup Onboard LED for status (Pin 25 for Pico, "LED" for Pico W)
 led = None
 try:
-    led = machine.Pin("LED", machine.Pin.OUT)
+    led = machine.Pin(25, machine.Pin.OUT)
 except:
     try:
-        led = machine.Pin(25, machine.Pin.OUT)
+        led = machine.Pin("LED", machine.Pin.OUT)
     except:
         print("Onboard LED not found, continuing without it")
 
